@@ -7,7 +7,7 @@ The `cd` command is a fundamental command-line utility used in Unix, Linux, and 
 
 | Command | Description |
 | :--- | :--- |
-| `cd directory` | Navigates to relative/absolute directory |
+| `cd <directory>` | Navigates to relative/absolute <directory> |
 | `cd ~` | Moves to the current user's home directory |
 | `cd ..` | Moves up one directory level |
 | `cd -` | Goes to the previously visited directory |
