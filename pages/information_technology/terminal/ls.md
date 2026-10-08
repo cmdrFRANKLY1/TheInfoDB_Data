@@ -1,4 +1,4 @@
-# LS (List Directory Contents)
+# ls (List Directory Contents)
 
 ## What is LS?
 The `ls` command is a standard command-line utility used in Unix, Linux, and macOS operating systems to list files and directories within the file system hierarchy.

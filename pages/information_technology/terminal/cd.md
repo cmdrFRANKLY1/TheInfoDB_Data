@@ -1,4 +1,4 @@
-# CD (Change Directory)
+# cd (Change Directory)
 
 ## What is CD?
 The `cd` command is a fundamental command-line utility used in Unix, Linux, and macOS operating systems. It allows users to navigate through the file system hierarchy, moving from one directory to another within the terminal.

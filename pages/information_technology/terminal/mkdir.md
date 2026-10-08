@@ -1,4 +1,4 @@
-# MKDIR (Make Directory)
+# mkdir (Make Directory)
 
 ## What is MKDIR?
 The `mkdir` command is a standard command-line utility used in Unix, Linux, and macOS operating systems to create new directories or folders within the file system hierarchy.

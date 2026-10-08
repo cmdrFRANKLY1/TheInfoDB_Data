@@ -1,4 +1,4 @@
-# RM (Remove Files or Directories)
+# rm (Remove Files or Directories)
 
 ## What is RM?
 

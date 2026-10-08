@@ -1,4 +1,4 @@
-# CAT (Concatenate and Display)
+# cat (Concatenate and Display)
 
 ## What is CAT?
 

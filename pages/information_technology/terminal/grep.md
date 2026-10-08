@@ -1,4 +1,4 @@
-# GREP (Global Regular Expression Print)
+# grep (Global Regular Expression Print)
 
 ## What is GREP?
 

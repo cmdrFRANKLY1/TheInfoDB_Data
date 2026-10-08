@@ -1,4 +1,4 @@
-# PING (Packet Internet Groper)
+# ping (Packet Internet Groper)
 
 ## What is PING?
 

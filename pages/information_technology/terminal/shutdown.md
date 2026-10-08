@@ -1,4 +1,4 @@
-# SHUTDOWN (Power Down or Restart System)
+# shutdown (Power Down or Restart System)
 
 ## What is SHUTDOWN?
 
