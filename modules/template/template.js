@@ -76,6 +76,22 @@
                         </button>
                     </div>
                 </div>
+
+                <!-- Template Settings Component -->
+                <div style="background-color: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px; padding: 24px; box-shadow: var(--shadow);">
+                    <h3 style="margin-bottom: 12px;">Template Preferences</h3>
+                    <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9em;">Local module behavior.</p>
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9em; cursor: pointer;">
+                            <input type="checkbox" checked style="accent-color: var(--text-primary); width: 16px; height: 16px;"> 
+                            Auto-save drafts locally
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9em; cursor: pointer;">
+                            <input type="checkbox" style="accent-color: var(--text-primary); width: 16px; height: 16px;"> 
+                            Strict schema validation
+                        </label>
+                    </div>
+                </div>
             </div>
         `;
 
@@ -97,5 +113,24 @@
 
     // Immediately register this module into the Monochrome Core UI sidebar
     window.CoreUI.addSidebarItem('module-template', 'Templates', iconPath, renderTemplateUI);
+
+    // Register a global setting entry into the CoreUI Settings Modal
+    if (window.CoreUI.addSettingToggle) {
+        window.CoreUI.addSettingToggle('global-template-logging', 'Template: Enable Verbose Logging', false, (state) => {
+            console.log('Template verbose logging set to:', state);
+        });
+    }
+
+    // React to Debug Mode
+    if (window.CoreUI.isDebugMode && window.CoreUI.isDebugMode()) {
+        renderTemplateUI();
+    }
+    
+    // Listen for Debug Mode being toggled on dynamically
+    document.addEventListener('debugToggled', (e) => {
+        if (e.detail) {
+            renderTemplateUI();
+        }
+    });
 
 })();
