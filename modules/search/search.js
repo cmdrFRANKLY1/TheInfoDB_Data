@@ -1,8 +1,8 @@
 /**
  * modules/search/search.js
  * 
- * A fully self-contained search & markdown rendering module for theInfoDB.
- * Supports filename search, header (#) parsing, and parsing words listed under the "# Tags" section.
+ * Local Vercel-optimized search & markdown rendering module for theInfoDB.
+ * Fetches files directly from the local deployment path (/pages/*) without GitHub API dependencies.
  */
 
 function ensureMarkedLoaded() {
@@ -79,7 +79,7 @@ async function renderSearchApp() {
                         <span id="file-count-badge" style="background: var(--bg-secondary); padding: 2px 8px; border-radius: 12px; font-size: 0.8em; color: var(--text-secondary);">0</span>
                     </div>
                     <div id="file-list-container" style="overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 4px; flex: 1;">
-                        <div style="padding: 24px; text-align: center; color: var(--text-secondary); font-size: 0.9em;">Scanning repository files...</div>
+                        <div style="padding: 24px; text-align: center; color: var(--text-secondary); font-size: 0.9em;">Loading local documents...</div>
                     </div>
                 </div>
 
@@ -119,31 +119,13 @@ async function loadRepositoryFiles() {
     const badge = document.getElementById('file-count-badge');
     if (!listContainer) return;
 
-    listContainer.innerHTML = '<div style="padding: 24px; text-align: center; color: var(--text-secondary); font-size: 0.9em;">Scanning GitHub repository tree...</div>';
+    listContainer.innerHTML = '<div style="padding: 24px; text-align: center; color: var(--text-secondary); font-size: 0.9em;">Discovering local markdown files...</div>';
 
-    const cfg = window.__APP_CONFIG__.github;
-    const apiUrl = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/git/trees/${cfg.branch}?recursive=1`;
-
-    try {
-        const headers = { 'Accept': 'application/vnd.github+json' };
-        if (window.__GITHUB_TOKEN__) {
-            headers['Authorization'] = `Bearer ${window.__GITHUB_TOKEN__}`;
-        }
-
-        const res = await fetch(apiUrl, { headers });
-        if (!res.ok) throw new Error(`GitHub API error: ${res.status}`);
-
-        const data = await res.json();
-        if (!data || !Array.isArray(data.tree)) throw new Error('Invalid tree response');
-
-        allMarkdownFiles = data.tree.filter(item => item.type === 'blob' && item.path.toLowerCase().endsWith('.md'));
-    } catch (err) {
-        console.warn('[SearchModule] Git tree API failed, using explicit fallback path for supply_and_demand.md:', err);
-        allMarkdownFiles = [
-            { path: 'pages/economics/supply_and_demand/supply_and_demand.md' },
-            { path: 'README.md' }
-        ];
-    }
+    // Define your local file paths relative to your Vercel deployment root
+    allMarkdownFiles = [
+        { path: 'pages/economics/supply_and_demand/supply_and_demand.md' },
+        { path: 'README.md' }
+    ];
 
     badge.textContent = allMarkdownFiles.length;
     renderFileList(allMarkdownFiles);
@@ -156,8 +138,7 @@ async function loadRepositoryFiles() {
 async function indexDocumentMetadata() {
     for (const file of allMarkdownFiles) {
         if (fileMetadataCache.has(file.path)) continue;
-        const url = window.resolveUrl(file.path);
-        const text = await window.safeFetchText(url);
+        const text = await window.safeFetchText(file.path);
         if (text) {
             const headers = [];
             const tags = new Set();
@@ -326,20 +307,9 @@ async function fetchAndRenderMarkdown(filePath) {
     contentPanel.style.display = 'none';
     contentPanel.innerHTML = '';
 
-    const fileUrl = window.resolveUrl(filePath);
-
     try {
-        let markdownText = await window.safeFetchText(fileUrl);
-        
-        // If remote fetch fails, try falling back to local relative path
-        if (markdownText === null) {
-            const localRes = await fetch(filePath);
-            if (localRes.ok) {
-                markdownText = await localRes.text();
-            }
-        }
-
-        if (markdownText === null) throw new Error(`Failed to fetch content from ${fileUrl} or locally`);
+        const markdownText = await window.safeFetchText(filePath);
+        if (markdownText === null) throw new Error(`Failed to fetch local file: ${filePath}`);
 
         placeholder.style.display = 'none';
         contentPanel.style.display = 'block';
