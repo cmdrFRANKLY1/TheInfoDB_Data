@@ -158,14 +158,18 @@
         fetchPagesData();
     }
 
-    // Helper to recursively fetch directories/files from GitHub Contents API
     async function fetchDirectoryRecursive(url) {
         let results = [];
         try {
             const res = await fetch(url);
-            if (!res.ok) return results;
+            if (!res.ok) {
+                console.warn("Failed to fetch path:", url, res.status);
+                return results;
+            }
             const items = await res.json();
             
+            if (!Array.isArray(items)) return results;
+
             for (const item of items) {
                 if (item.type === 'file' && item.name.endsWith('.md')) {
                     results.push(item);
@@ -192,8 +196,27 @@
         const contentArea = document.getElementById('kb-content-area');
         
         try {
-            const rootPagesUrl = 'https://api.github.com/repos/cmdrFRANKLY1/TheInfoDB_Data/contents/pages';
-            const mdFiles = await fetchDirectoryRecursive(rootPagesUrl);
+            // Using GitHub Git Tree API for robust recursive discovery without deep URL walking limits
+            const treeUrl = 'https://api.github.com/repos/cmdrFRANKLY1/TheInfoDB_Data/git/trees/main?recursive=1';
+            const treeRes = await fetch(treeUrl);
+            
+            let mdFiles = [];
+            if (treeRes.ok) {
+                const treeData = await treeRes.json();
+                if (treeData && Array.isArray(treeData.tree)) {
+                    mdFiles = treeData.tree.filter(item => item.type === 'blob' && item.path.startsWith('pages/') && item.path.endsWith('.md')).map(item => ({
+                        name: item.path.split('/').pop(),
+                        path: item.path,
+                        download_url: `https://raw.githubusercontent.com/cmdrFRANKLY1/TheInfoDB_Data/main/${item.path}`
+                    }));
+                }
+            }
+
+            // Fallback to Contents API if Git Tree fails
+            if (mdFiles.length === 0) {
+                const rootPagesUrl = 'https://api.github.com/repos/cmdrFRANKLY1/TheInfoDB_Data/contents/pages';
+                mdFiles = await fetchDirectoryRecursive(rootPagesUrl);
+            }
                 
             pagesCache = await Promise.all(mdFiles.map(async (file) => {
                 let tags = [];
@@ -203,7 +226,8 @@
                 let rawText = '';
                 
                 try {
-                    const fileRes = await fetch(file.download_url);
+                    const downloadUrl = file.download_url || `https://raw.githubusercontent.com/cmdrFRANKLY1/TheInfoDB_Data/main/${file.path}`;
+                    const fileRes = await fetch(downloadUrl);
                     if (fileRes.ok) {
                         rawText = await fileRes.text();
                         
@@ -252,6 +276,7 @@
 
                 return {
                     ...file,
+                    download_url: file.download_url || `https://raw.githubusercontent.com/cmdrFRANKLY1/TheInfoDB_Data/main/${file.path}`,
                     categoryPath,
                     cleanTitle: file.name.replace('.md', '').replace(/[-_]/g, ' '),
                     tags,
