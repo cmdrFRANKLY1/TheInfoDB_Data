@@ -112,24 +112,42 @@
     }
 
     // Immediately register this module into the Monochrome Core UI sidebar
-    window.CoreUI.addSidebarItem('module-template', 'Templates', iconPath, renderTemplateUI);
+    const sidebarBtn = window.CoreUI.addSidebarItem('module-template', 'Templates', iconPath, renderTemplateUI);
+
+    // Default to hidden if debug is off on load
+    if (!window.CoreUI.isDebugMode()) {
+        sidebarBtn.style.display = 'none';
+    }
+    
+    let settingsRow = null;
 
     // Register a global setting entry into the CoreUI Settings Modal
     if (window.CoreUI.addSettingToggle) {
-        window.CoreUI.addSettingToggle('global-template-logging', 'Template: Enable Verbose Logging', false, (state) => {
+        settingsRow = window.CoreUI.addSettingToggle('global-template-logging', 'Template: Enable Verbose Logging', false, (state) => {
             console.log('Template verbose logging set to:', state);
         });
+        
+        if (!window.CoreUI.isDebugMode() && settingsRow) {
+            settingsRow.style.display = 'none';
+        }
     }
 
-    // React to Debug Mode
-    if (window.CoreUI.isDebugMode && window.CoreUI.isDebugMode()) {
-        renderTemplateUI();
-    }
-    
-    // Listen for Debug Mode being toggled on dynamically
+    // React to Debug Mode dynamically
     document.addEventListener('debugToggled', (e) => {
-        if (e.detail) {
-            renderTemplateUI();
+        const isDebug = e.detail;
+        
+        if (isDebug) {
+            sidebarBtn.style.display = 'flex';
+            if (settingsRow) settingsRow.style.display = 'flex';
+        } else {
+            sidebarBtn.style.display = 'none';
+            if (settingsRow) settingsRow.style.display = 'none';
+            
+            // Clean up the canvas if it currently displays this module
+            const canvas = window.CoreUI.getCanvas();
+            if (canvas.innerHTML.includes('Template Module')) {
+                window.CoreUI.clearCanvas();
+            }
         }
     });
 
