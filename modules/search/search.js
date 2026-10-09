@@ -10,7 +10,7 @@
     let isFetchingPages = false;
     let hasFetchedPages = false;
 
-    // Inject 'marked.js' dynamically to parse the markdown files beautifully
+    // Inject 'marked.js' dynamically if not present
     if (typeof marked === 'undefined') {
         const script = document.createElement('script');
         script.src = 'https://cdn.jsdelivr.net/npm/marked/marked.min.js';
@@ -21,7 +21,6 @@
         const canvas = window.CoreUI.getCanvas();
         window.CoreUI.clearCanvas();
 
-        // Main Container
         const container = document.createElement('div');
         container.style.maxWidth = '800px';
         container.style.margin = '0 auto';
@@ -31,24 +30,23 @@
         container.style.gap = '24px';
         container.style.height = '100%';
 
-        // Header and Search Input
         container.innerHTML = `
             <div>
                 <h1 style="margin-bottom: 8px;">Knowledge Base</h1>
-                <p style="color: var(--text-secondary); font-size: 0.9em;">Search and browse markdown pages from the repository.</p>
+                <p style="color: var(--text-secondary); font-size: 0.9em;">Search and browse Google-style indexed markdown pages from GitHub.</p>
             </div>
 
-            <!-- Big Search Bar -->
+            <!-- Google-style Search Bar -->
             <div style="position: relative; width: 100%;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; color: var(--text-secondary);">
                     <circle cx="11" cy="11" r="8"></circle>
                     <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                 </svg>
-                <input type="text" id="kb-search-input" placeholder="Search pages by title..." style="width: 100%; padding: 16px 16px 16px 48px; border-radius: 12px; border: 1px solid var(--border-color); background-color: var(--bg-primary); color: var(--text-primary); outline: none; font-size: 1.1em; transition: all 0.2s; box-shadow: var(--shadow);">
+                <input type="text" id="kb-search-input" placeholder="Search pages by title, tags, or content..." style="width: 100%; padding: 16px 16px 16px 48px; border-radius: 12px; border: 1px solid var(--border-color); background-color: var(--bg-primary); color: var(--text-primary); outline: none; font-size: 1.1em; transition: all 0.2s; box-shadow: var(--shadow);">
             </div>
 
             <!-- Results / Content Area -->
-            <div id="kb-content-area" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding-bottom: 40px;">
+            <div id="kb-content-area" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding-bottom: 40px;">
                 <div style="color: var(--text-secondary); text-align: center; padding: 40px; font-size: 0.9em;">
                     Loading repository data...
                 </div>
@@ -65,21 +63,28 @@
             .kb-result-card {
                 background-color: var(--bg-primary);
                 border: 1px solid var(--border-color);
-                border-radius: 8px;
-                padding: 16px;
+                border-radius: 12px;
+                padding: 20px;
                 cursor: pointer;
                 transition: all 0.2s;
                 box-shadow: var(--shadow);
                 display: flex;
-                align-items: center;
-                gap: 12px;
+                flex-direction: column;
+                gap: 8px;
             }
             .kb-result-card:hover {
                 border-color: var(--text-primary);
                 transform: translateY(-2px);
             }
-            .kb-result-icon {
+            .kb-tag-pill {
+                display: inline-block;
+                background-color: var(--bg-secondary);
+                border: 1px solid var(--border-color);
+                padding: 2px 8px;
+                border-radius: 6px;
+                font-size: 0.75em;
                 color: var(--text-secondary);
+                margin-right: 6px;
             }
             .kb-markdown-container {
                 background-color: var(--bg-primary);
@@ -131,14 +136,17 @@
             .kb-back-btn:hover {
                 opacity: 0.8;
             }
+            .kb-tooltip {
+                border-bottom: 1px dashed var(--text-primary);
+                cursor: help;
+                position: relative;
+            }
         `;
         canvas.appendChild(style);
 
-        // Bind event listeners
         const searchInput = document.getElementById('kb-search-input');
         searchInput.addEventListener('input', (e) => renderResults(e.target.value));
 
-        // Start fetching data
         fetchPagesData();
     }
 
@@ -159,12 +167,72 @@
             
             if (res.ok) {
                 const items = await res.json();
+                const mdFiles = items.filter(item => item.type === 'file' && item.name.endsWith('.md'));
                 
-                // Filter only markdown files
-                pagesCache = items.filter(item => item.type === 'file' && item.name.endsWith('.md'));
+                // Fetch each markdown file to parse tags/metadata for Google-style searching
+                pagesCache = await Promise.all(mdFiles.map(async (file) => {
+                    let tags = [];
+                    let dependencies = [];
+                    let mouseOvers = {};
+                    let hyperlinks = {};
+                    let rawText = '';
+                    
+                    try {
+                        const fileRes = await fetch(file.download_url);
+                        if (fileRes.ok) {
+                            rawText = await fileRes.text();
+                            
+                            // Parse # Tags
+                            const tagsMatch = rawText.match(/#\s*Tags\s*\n([\s\S]*?)(?=\n#|$)/i);
+                            if (tagsMatch) {
+                                tags = tagsMatch[1].split(/[\n,]+/).map(t => t.trim().replace(/^[-*]\s*/, '')).filter(Boolean);
+                            }
+
+                            // Parse # Dependencies
+                            const depMatch = rawText.match(/#\s*Dependencies\s*\n([\s\S]*?)(?=\n#|$)/i);
+                            if (depMatch) {
+                                dependencies = depMatch[1].split(/[\n,]+/).map(d => d.trim().replace(/^[-*]\s*/, '')).filter(Boolean);
+                            }
+
+                            // Parse # Mouse Over Information
+                            const moMatch = rawText.match(/#\s*Mouse Over Information\s*\n([\s\S]*?)(?=\n#|$)/i);
+                            if (moMatch) {
+                                moMatch[1].split('\n').forEach(line => {
+                                    const parts = line.split(/[:|-]/);
+                                    if (parts.length >= 2) {
+                                        mouseOvers[parts[0].trim().toLowerCase()] = parts.slice(1).join(':').trim();
+                                    }
+                                });
+                            }
+
+                            // Parse # Hyperlinks
+                            const hypMatch = rawText.match(/#\s*Hyperlinks\s*\n([\s\S]*?)(?=\n#|$)/i);
+                            if (hypMatch) {
+                                hypMatch[1].split('\n').forEach(line => {
+                                    const match = line.match(/\[([^\]]+)\]\(([^)]+)\)/);
+                                    if (match) {
+                                        hyperlinks[match[1].toLowerCase()] = match[2];
+                                    }
+                                });
+                            }
+                        }
+                    } catch (err) {
+                        console.warn("Could not parse file metadata:", file.name);
+                    }
+
+                    return {
+                        ...file,
+                        cleanTitle: file.name.replace('.md', '').replace(/-/g, ' '),
+                        tags,
+                        dependencies,
+                        mouseOvers,
+                        hyperlinks,
+                        rawText
+                    };
+                }));
+
                 hasFetchedPages = true;
-                
-                if(contentArea) renderResults(document.getElementById('kb-search-input').value);
+                if (contentArea) renderResults(document.getElementById('kb-search-input').value);
             } else {
                 throw new Error("GitHub API Error: " + res.statusText);
             }
@@ -173,7 +241,7 @@
             if (contentArea) {
                 contentArea.innerHTML = `
                     <div style="color: #ef4444; padding: 24px; border: 1px solid #ef4444; border-radius: 8px; background: rgba(239, 68, 68, 0.1);">
-                        <strong>Error loading pages:</strong> Unable to fetch data from GitHub. You may have hit a rate limit.
+                        <strong>Error loading pages:</strong> Unable to fetch repository data. You may have hit a rate limit.
                     </div>
                 `;
             }
@@ -186,45 +254,50 @@
         const contentArea = document.getElementById('kb-content-area');
         if (!contentArea) return;
 
-        contentArea.innerHTML = ''; // Clear current
+        contentArea.innerHTML = '';
         
         if (pagesCache.length === 0) {
-            contentArea.innerHTML = `<div style="color: var(--text-secondary); text-align: center; padding: 40px;">No markdown pages found in the repository.</div>`;
+            contentArea.innerHTML = `<div style="color: var(--text-secondary); text-align: center; padding: 40px;">No markdown pages found in repository.</div>`;
             return;
         }
 
         const lowerQuery = query.toLowerCase();
         
-        // Filter by filename (removing the .md extension for cleanliness)
-        const filtered = pagesCache.filter(page => {
-            const cleanName = page.name.replace('.md', '').toLowerCase();
-            return cleanName.includes(lowerQuery);
-        });
+        // Google-style relevance algorithm matching Title, Tags, Dependencies, or Content
+        const scored = pagesCache.map(page => {
+            let score = 0;
+            const titleMatch = page.cleanTitle.toLowerCase().includes(lowerQuery);
+            const tagMatch = page.tags.some(t => t.toLowerCase().includes(lowerQuery));
+            const depMatch = page.dependencies.some(d => d.toLowerCase().includes(lowerQuery));
+            const contentMatch = page.rawText.toLowerCase().includes(lowerQuery);
 
-        if (filtered.length === 0) {
-            contentArea.innerHTML = `<div style="color: var(--text-secondary); text-align: center; padding: 40px;">No pages match your search.</div>`;
+            if (titleMatch) score += 10;
+            if (tagMatch) score += 8;
+            if (depMatch) score += 5;
+            if (contentMatch) score += 2;
+
+            return { page, score };
+        }).filter(item => query === "" || item.score > 0);
+
+        scored.sort((a, b) => b.score - a.score);
+
+        if (scored.length === 0) {
+            contentArea.innerHTML = `<div style="color: var(--text-secondary); text-align: center; padding: 40px;">No results match your query.</div>`;
             return;
         }
 
-        // Render Cards
-        filtered.forEach(page => {
+        scored.forEach(({ page }) => {
             const card = document.createElement('div');
             card.className = 'kb-result-card';
             
-            const cleanTitle = page.name.replace('.md', '').replace(/-/g, ' ');
-            
+            const tagsHTML = page.tags.map(t => `<span class="kb-tag-pill">${t}</span>`).join('');
+            const depsHTML = page.dependencies.length > 0 ? `<div style="font-size: 0.8em; color: var(--text-secondary);">Dependencies: ${page.dependencies.join(', ')}</div>` : '';
+
             card.innerHTML = `
-                <svg class="kb-result-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 24px; height: 24px;">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                    <polyline points="14 2 14 8 20 8"></polyline>
-                    <line x1="16" y1="13" x2="8" y2="13"></line>
-                    <line x1="16" y1="17" x2="8" y2="17"></line>
-                    <polyline points="10 9 9 9 8 9"></polyline>
-                </svg>
-                <div style="flex: 1;">
-                    <div style="font-weight: 600; text-transform: capitalize;">${cleanTitle}</div>
-                    <div style="font-size: 0.8em; color: var(--text-secondary);">${page.path}</div>
-                </div>
+                <div style="font-size: 0.8em; color: var(--text-secondary);">${page.path}</div>
+                <div style="font-weight: 600; font-size: 1.1em; text-transform: capitalize; color: var(--text-primary);">${page.cleanTitle}</div>
+                <div>${tagsHTML}</div>
+                ${depsHTML}
             `;
             
             card.addEventListener('click', () => loadAndRenderPage(page));
@@ -236,13 +309,12 @@
         const contentArea = document.getElementById('kb-content-area');
         if (!contentArea) return;
 
-        // Show loading state
         contentArea.innerHTML = `
             <button class="kb-back-btn" id="kb-btn-back">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px;"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
                 Back to Search
             </button>
-            <div style="color: var(--text-secondary); padding: 40px; text-align: center;">Fetching document...</div>
+            <div style="color: var(--text-secondary); padding: 40px; text-align: center;">Rendering document...</div>
         `;
 
         document.getElementById('kb-btn-back').addEventListener('click', () => {
@@ -250,17 +322,27 @@
         });
 
         try {
-            // Using jsDelivr to bypass raw.githubusercontent limits/MIME issues easily if needed,
-            // but standard download_url works well for raw text.
             const res = await fetch(page.download_url);
-            
             if (res.ok) {
-                const markdownText = await res.text();
+                let markdownText = await res.text();
                 
-                // Parse markdown if library loaded, otherwise raw text
-                const htmlContent = (typeof marked !== 'undefined') 
+                // Apply Marked.js compilation
+                let htmlContent = (typeof marked !== 'undefined') 
                     ? marked.parse(markdownText) 
                     : `<pre style="white-space: pre-wrap; font-family: inherit;">${markdownText}</pre>`;
+
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = htmlContent;
+
+                // Process Mouse Over Information tooltips
+                if (page.mouseOvers && Object.keys(page.mouseOvers).length > 0) {
+                    let innerHTML = tempDiv.innerHTML;
+                    for (const [word, info] of Object.entries(page.mouseOvers)) {
+                        const regex = new RegExp(`\\b(${word})\\b`, 'gi');
+                        innerHTML = innerHTML.replace(regex, `<span class="kb-tooltip" title="${info}">$1</span>`);
+                    }
+                    tempDiv.innerHTML = innerHTML;
+                }
 
                 contentArea.innerHTML = `
                     <button class="kb-back-btn" id="kb-btn-back-loaded">
@@ -268,7 +350,7 @@
                         Back to Search
                     </button>
                     <div class="kb-markdown-container">
-                        ${htmlContent}
+                        ${tempDiv.innerHTML}
                     </div>
                 `;
 
@@ -277,7 +359,7 @@
                 });
 
             } else {
-                throw new Error("Failed to load markdown.");
+                throw new Error("Failed to load markdown content.");
             }
         } catch (e) {
             contentArea.innerHTML = `
@@ -286,7 +368,7 @@
                     Back to Search
                 </button>
                 <div style="color: #ef4444; padding: 24px; border: 1px solid #ef4444; border-radius: 8px; background: rgba(239, 68, 68, 0.1);">
-                    <strong>Error:</strong> Could not load document content.
+                    <strong>Error:</strong> Could not render document content.
                 </div>
             `;
             document.getElementById('kb-btn-back-error').addEventListener('click', () => {
@@ -295,19 +377,10 @@
         }
     }
 
-    // Immediately register this module into the Monochrome Core UI sidebar
     if (window.CoreUI && typeof window.CoreUI.addSidebarItem === 'function') {
-        const sidebarBtn = window.CoreUI.addSidebarItem('module-search', 'Search', iconPath, renderSearchUI);
-        
-        // Example: Add a setting for this module if needed in the future
-        if (window.CoreUI.addSettingToggle) {
-            window.CoreUI.addSettingToggle('setting-search-preload', 'Search: Preload Markdown (Beta)', false, (state) => {
-                console.log('Search preload toggled:', state);
-                // Implementation for preloading could go here
-            });
-        }
+        window.CoreUI.addSidebarItem('module-search', 'Search', iconPath, renderSearchUI);
     } else {
-        console.error("CoreUI API not found. Cannot mount Search module.");
+        console.error("CoreUI API not found.");
     }
 
 })();
