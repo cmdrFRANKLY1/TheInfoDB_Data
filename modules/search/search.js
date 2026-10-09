@@ -3,6 +3,7 @@
  * 
  * A fully self-contained search & markdown rendering module for theInfoDB.
  * Supports filename search, header (#) parsing, and parsing words listed under the "# Tags" section.
+ * Includes local fallback paths mimicking your GitHub repository structure.
  */
 
 function ensureMarkedLoaded() {
@@ -28,6 +29,15 @@ if (window.CoreUI) {
 let allMarkdownFiles = [];
 let fileMetadataCache = new Map(); // path -> { headers: [], tags: [], text: '' }
 
+async function initSearchModule() {
+    window.CoreUI.addSidebarItem(
+        'sidebar-btn-search',
+        'Repository Explorer',
+        '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>',
+        renderSearchApp
+    );
+}
+
 async function renderSearchApp() {
     await ensureMarkedLoaded();
     const canvas = window.CoreUI.getCanvas();
@@ -39,7 +49,7 @@ async function renderSearchApp() {
             <div style="display: flex; flex-direction: column; gap: 8px;">
                 <h1 style="font-size: 1.8em; font-weight: 700; letter-spacing: -0.025em;">Repository Explorer & Deep Search</h1>
                 <p style="color: var(--text-secondary); font-size: 0.95em;">
-                    Search filenames, headings (<code style="background: var(--bg-primary); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">#</code>), and words from the <code style="background: var(--bg-primary); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);"># Tags</code> section across <code style="background: var(--bg-primary); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">cmdrFRANKLY1/TheInfoDB_Data</code>
+                    Search filenames, headings (<code style="background: var(--bg-primary); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">#</code>), and words from the <code style="background: var(--bg-primary); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);"># Tags</code> section across your documentation
                 </p>
             </div>
 
@@ -161,12 +171,10 @@ async function indexDocumentMetadata() {
             }
 
             // Extract words specifically from under the "# Tags" section
-            // Look for lines following a "# Tags" or "## Tags" header until the next header or end of file
             const tagsSectionRegex = /^#+\s*tags\s*[\r\n]+([\s\S]*?)(?=^#+\s|\Z)/gim;
             let sectionMatch;
             while ((sectionMatch = tagsSectionRegex.exec(text)) !== null) {
                 const sectionContent = sectionMatch[1];
-                // Clean up markdown code backticks, list bullets, commas, quotes
                 const cleaned = sectionContent
                     .replace(/[`"'*_\-\[\]()]/g, ' ')
                     .replace(/[\r\n,]+/g, ' ');
@@ -322,8 +330,17 @@ async function fetchAndRenderMarkdown(filePath) {
     const fileUrl = window.resolveUrl(filePath);
 
     try {
-        const markdownText = await window.safeFetchText(fileUrl);
-        if (markdownText === null) throw new Error(`Failed to fetch content from ${fileUrl}`);
+        let markdownText = await window.safeFetchText(fileUrl);
+        
+        // If remote fetch fails, try falling back to local relative path
+        if (markdownText === null) {
+            const localRes = await fetch(filePath);
+            if (localRes.ok) {
+                markdownText = await localRes.text();
+            }
+        }
+
+        if (markdownText === null) throw new Error(`Failed to fetch content from ${fileUrl} or locally`);
 
         placeholder.style.display = 'none';
         contentPanel.style.display = 'block';
