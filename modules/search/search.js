@@ -145,17 +145,18 @@ async function loadRepositoryFiles() {
             throw new Error('Invalid tree response format from GitHub');
         }
 
-        // Filter for markdown (.md) files
+        // Filter for markdown (.md) files across all folders (including pages/economics/supply_and_demand/demand.md)
         allMarkdownFiles = data.tree.filter(item => item.type === 'blob' && item.path.toLowerCase().endsWith('.md'));
         badge.textContent = allMarkdownFiles.length;
 
         renderFileList(allMarkdownFiles);
 
     } catch (err) {
-        console.warn('[SearchModule] Failed to fetch git tree API, falling back to preset modules index or manual discovery:', err);
+        console.warn('[SearchModule] Failed to fetch git tree API, falling back to known paths and discovery:', err);
         
-        // Fallback: Try fetching a known index or manifest, or show an error with a manual entry box
+        // Fallback: Expanded known preset files and standard directories
         allMarkdownFiles = [
+            { path: 'pages/economics/supply_and_demand/demand.md' },
             { path: 'README.md' },
             { path: 'modules/search/README.md' }
         ];
