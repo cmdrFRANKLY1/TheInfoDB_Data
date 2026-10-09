@@ -33,7 +33,7 @@
         container.innerHTML = `
             <div>
                 <h1 style="margin-bottom: 8px;">Knowledge Base</h1>
-                <p style="color: var(--text-secondary); font-size: 0.9em;">Search and browse Google-style indexed markdown pages from GitHub.</p>
+                <p style="color: var(--text-secondary); font-size: 0.9em;">Search and browse categorized markdown documentation from GitHub.</p>
             </div>
 
             <!-- Google-style Search Bar -->
@@ -42,13 +42,13 @@
                     <circle cx="11" cy="11" r="8"></circle>
                     <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                 </svg>
-                <input type="text" id="kb-search-input" placeholder="Search pages by title, tags, or content..." style="width: 100%; padding: 16px 16px 16px 48px; border-radius: 12px; border: 1px solid var(--border-color); background-color: var(--bg-primary); color: var(--text-primary); outline: none; font-size: 1.1em; transition: all 0.2s; box-shadow: var(--shadow);">
+                <input type="text" id="kb-search-input" placeholder="Search pages by title, category, tags, or content..." style="width: 100%; padding: 16px 16px 16px 48px; border-radius: 12px; border: 1px solid var(--border-color); background-color: var(--bg-primary); color: var(--text-primary); outline: none; font-size: 1.1em; transition: all 0.2s; box-shadow: var(--shadow);">
             </div>
 
             <!-- Results / Content Area -->
             <div id="kb-content-area" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding-bottom: 40px;">
                 <div style="color: var(--text-secondary); text-align: center; padding: 40px; font-size: 0.9em;">
-                    Loading repository data...
+                    Loading categorized repository data...
                 </div>
             </div>
         `;
@@ -85,6 +85,14 @@
                 font-size: 0.75em;
                 color: var(--text-secondary);
                 margin-right: 6px;
+            }
+            .kb-category-badge {
+                display: inline-block;
+                font-size: 0.75em;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                color: var(--text-secondary);
+                margin-bottom: 2px;
             }
             .kb-markdown-container {
                 background-color: var(--bg-primary);
@@ -150,6 +158,28 @@
         fetchPagesData();
     }
 
+    // Helper to recursively fetch directories/files from GitHub Contents API
+    async function fetchDirectoryRecursive(url) {
+        let results = [];
+        try {
+            const res = await fetch(url);
+            if (!res.ok) return results;
+            const items = await res.json();
+            
+            for (const item of items) {
+                if (item.type === 'file' && item.name.endsWith('.md')) {
+                    results.push(item);
+                } else if (item.type === 'dir') {
+                    const subFiles = await fetchDirectoryRecursive(item.url);
+                    results = results.concat(subFiles);
+                }
+            }
+        } catch (e) {
+            console.warn("Error walking directory:", url, e);
+        }
+        return results;
+    }
+
     async function fetchPagesData() {
         if (hasFetchedPages) {
             renderResults(document.getElementById('kb-search-input').value);
@@ -162,82 +192,80 @@
         const contentArea = document.getElementById('kb-content-area');
         
         try {
-            const repoApiUrl = 'https://api.github.com/repos/cmdrFRANKLY1/TheInfoDB_Data/contents/pages';
-            const res = await fetch(repoApiUrl);
-            
-            if (res.ok) {
-                const items = await res.json();
-                const mdFiles = items.filter(item => item.type === 'file' && item.name.endsWith('.md'));
+            const rootPagesUrl = 'https://api.github.com/repos/cmdrFRANKLY1/TheInfoDB_Data/contents/pages';
+            const mdFiles = await fetchDirectoryRecursive(rootPagesUrl);
                 
-                // Fetch each markdown file to parse tags/metadata for Google-style searching
-                pagesCache = await Promise.all(mdFiles.map(async (file) => {
-                    let tags = [];
-                    let dependencies = [];
-                    let mouseOvers = {};
-                    let hyperlinks = {};
-                    let rawText = '';
-                    
-                    try {
-                        const fileRes = await fetch(file.download_url);
-                        if (fileRes.ok) {
-                            rawText = await fileRes.text();
-                            
-                            // Parse # Tags
-                            const tagsMatch = rawText.match(/#\s*Tags\s*\n([\s\S]*?)(?=\n#|$)/i);
-                            if (tagsMatch) {
-                                tags = tagsMatch[1].split(/[\n,]+/).map(t => t.trim().replace(/^[-*]\s*/, '')).filter(Boolean);
-                            }
-
-                            // Parse # Dependencies
-                            const depMatch = rawText.match(/#\s*Dependencies\s*\n([\s\S]*?)(?=\n#|$)/i);
-                            if (depMatch) {
-                                dependencies = depMatch[1].split(/[\n,]+/).map(d => d.trim().replace(/^[-*]\s*/, '')).filter(Boolean);
-                            }
-
-                            // Parse # Mouse Over Information
-                            const moMatch = rawText.match(/#\s*Mouse Over Information\s*\n([\s\S]*?)(?=\n#|$)/i);
-                            if (moMatch) {
-                                moMatch[1].split('\n').forEach(line => {
-                                    const parts = line.split(/[:|-]/);
-                                    if (parts.length >= 2) {
-                                        mouseOvers[parts[0].trim().toLowerCase()] = parts.slice(1).join(':').trim();
-                                    }
-                                });
-                            }
-
-                            // Parse # Hyperlinks
-                            const hypMatch = rawText.match(/#\s*Hyperlinks\s*\n([\s\S]*?)(?=\n#|$)/i);
-                            if (hypMatch) {
-                                hypMatch[1].split('\n').forEach(line => {
-                                    const match = line.match(/\[([^\]]+)\]\(([^)]+)\)/);
-                                    if (match) {
-                                        hyperlinks[match[1].toLowerCase()] = match[2];
-                                    }
-                                });
-                            }
+            pagesCache = await Promise.all(mdFiles.map(async (file) => {
+                let tags = [];
+                let dependencies = [];
+                let mouseOvers = {};
+                let hyperlinks = {};
+                let rawText = '';
+                
+                try {
+                    const fileRes = await fetch(file.download_url);
+                    if (fileRes.ok) {
+                        rawText = await fileRes.text();
+                        
+                        // Parse # Tags
+                        const tagsMatch = rawText.match(/#\s*Tags\s*\n([\s\S]*?)(?=\n#|$)/i);
+                        if (tagsMatch) {
+                            tags = tagsMatch[1].split(/[\n,]+/).map(t => t.trim().replace(/^[-*]\s*/, '')).filter(Boolean);
                         }
-                    } catch (err) {
-                        console.warn("Could not parse file metadata:", file.name);
+
+                        // Parse # Dependencies
+                        const depMatch = rawText.match(/#\s*Dependencies\s*\n([\s\S]*?)(?=\n#|$)/i);
+                        if (depMatch) {
+                            dependencies = depMatch[1].split(/[\n,]+/).map(d => d.trim().replace(/^[-*]\s*/, '')).filter(Boolean);
+                        }
+
+                        // Parse # Mouse Over Information
+                        const moMatch = rawText.match(/#\s*Mouse Over Information\s*\n([\s\S]*?)(?=\n#|$)/i);
+                        if (moMatch) {
+                            moMatch[1].split('\n').forEach(line => {
+                                const parts = line.split(/[:|-]/);
+                                if (parts.length >= 2) {
+                                    mouseOvers[parts[0].trim().toLowerCase()] = parts.slice(1).join(':').trim();
+                                }
+                            });
+                        }
+
+                        // Parse # Hyperlinks
+                        const hypMatch = rawText.match(/#\s*Hyperlinks\s*\n([\s\S]*?)(?=\n#|$)/i);
+                        if (hypMatch) {
+                            hypMatch[1].split('\n').forEach(line => {
+                                const match = line.match(/\[([^\]]+)\]\(([^)]+)\)/);
+                                if (match) {
+                                    hyperlinks[match[1].toLowerCase()] = match[2];
+                                }
+                            });
+                        }
                     }
+                } catch (err) {
+                    console.warn("Could not parse file metadata:", file.name);
+                }
 
-                    return {
-                        ...file,
-                        cleanTitle: file.name.replace('.md', '').replace(/-/g, ' '),
-                        tags,
-                        dependencies,
-                        mouseOvers,
-                        hyperlinks,
-                        rawText
-                    };
-                }));
+                // Extract category path from relative path e.g. "pages/economics/supply_and_demand/supply.md" -> "economics / supply_and_demand"
+                const pathParts = file.path.split('/');
+                pathParts.pop(); // remove filename
+                const categoryPath = pathParts.filter(p => p !== 'pages').join(' / ') || 'general';
 
-                hasFetchedPages = true;
-                if (contentArea) renderResults(document.getElementById('kb-search-input').value);
-            } else {
-                throw new Error("GitHub API Error: " + res.statusText);
-            }
+                return {
+                    ...file,
+                    categoryPath,
+                    cleanTitle: file.name.replace('.md', '').replace(/[-_]/g, ' '),
+                    tags,
+                    dependencies,
+                    mouseOvers,
+                    hyperlinks,
+                    rawText
+                };
+            }));
+
+            hasFetchedPages = true;
+            if (contentArea) renderResults(document.getElementById('kb-search-input').value);
         } catch (e) {
-            console.warn("Failed to fetch /pages/ directory:", e);
+            console.warn("Failed to fetch categorized /pages/ directory:", e);
             if (contentArea) {
                 contentArea.innerHTML = `
                     <div style="color: #ef4444; padding: 24px; border: 1px solid #ef4444; border-radius: 8px; background: rgba(239, 68, 68, 0.1);">
@@ -263,15 +291,17 @@
 
         const lowerQuery = query.toLowerCase();
         
-        // Google-style relevance algorithm matching Title, Tags, Dependencies, or Content
+        // Google-style relevance algorithm matching Title, Category, Tags, Dependencies, or Content
         const scored = pagesCache.map(page => {
             let score = 0;
             const titleMatch = page.cleanTitle.toLowerCase().includes(lowerQuery);
+            const categoryMatch = page.categoryPath.toLowerCase().includes(lowerQuery);
             const tagMatch = page.tags.some(t => t.toLowerCase().includes(lowerQuery));
             const depMatch = page.dependencies.some(d => d.toLowerCase().includes(lowerQuery));
             const contentMatch = page.rawText.toLowerCase().includes(lowerQuery);
 
-            if (titleMatch) score += 10;
+            if (titleMatch) score += 12;
+            if (categoryMatch) score += 9;
             if (tagMatch) score += 8;
             if (depMatch) score += 5;
             if (contentMatch) score += 2;
@@ -294,7 +324,10 @@
             const depsHTML = page.dependencies.length > 0 ? `<div style="font-size: 0.8em; color: var(--text-secondary);">Dependencies: ${page.dependencies.join(', ')}</div>` : '';
 
             card.innerHTML = `
-                <div style="font-size: 0.8em; color: var(--text-secondary);">${page.path}</div>
+                <div>
+                    <span class="kb-category-badge">${page.categoryPath}</span>
+                    <div style="font-size: 0.75em; color: var(--text-secondary); float: right;">${page.path}</div>
+                </div>
                 <div style="font-weight: 600; font-size: 1.1em; text-transform: capitalize; color: var(--text-primary);">${page.cleanTitle}</div>
                 <div>${tagsHTML}</div>
                 ${depsHTML}
@@ -349,6 +382,7 @@
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px;"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
                         Back to Search
                     </button>
+                    <div style="font-size: 0.8em; color: var(--text-secondary); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em;">Category: ${page.categoryPath}</div>
                     <div class="kb-markdown-container">
                         ${tempDiv.innerHTML}
                     </div>
