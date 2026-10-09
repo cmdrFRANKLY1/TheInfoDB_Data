@@ -6,7 +6,7 @@ A fully self-contained search & markdown rendering module for theInfoDB.
 
 Supports filename search, header (#) parsing, and parsing words listed under the "# Tags" section.
 
-Includes enhanced fallback mechanisms and robust error handling for GitHub repository fetching.
+Includes enhanced fallback mechanisms and robust recursive directory scanning for GitHub repositories.
 */
 
 function ensureMarkedLoaded() {
@@ -130,6 +130,8 @@ listContainer.innerHTML = '<div style="padding: 24px; text-align: center; color:
 const cfg = window.__APP_CONFIG__.github;
 const apiUrl = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/git/trees/${cfg.branch}?recursive=1`;
 
+let foundFiles = [];
+
 try {
     const headers = { 'Accept': 'application/vnd.github+json' };
     if (window.__GITHUB_TOKEN__) {
@@ -142,15 +144,37 @@ try {
     const data = await res.json();
     if (!data || !Array.isArray(data.tree)) throw new Error('Invalid tree response');
 
-    allMarkdownFiles = data.tree.filter(item => item.type === 'blob' && item.path.toLowerCase().endsWith('.md'));
+    foundFiles = data.tree
+        .filter(item => item.type === 'blob' && item.path.toLowerCase().endsWith('.md'))
+        .map(item => ({ path: item.path }));
 } catch (err) {
-    console.warn('[SearchModule] Git tree API failed or limited, trying fallback files list:', err);
+    console.warn('[SearchModule] Git tree API failed or rate-limited. Trying known documentation paths:', err);
     
-    // Comprehensive fallback list incorporating commonly used markdown files or indices
-    allMarkdownFiles = [
-        { path: 'README.md' },
-        { path: 'pages/economics/supply_and_demand/demand.md' }
+    // Comprehensive candidate list covering typical pages folders
+    const potentialPaths = [
+        'README.md',
+        'pages/economics/supply_and_demand/demand.md',
+        'pages/economics/supply_and_demand/supply.md',
+        'pages/economics/market_equilibrium.md',
+        'pages/index.md',
+        'pages/home.md'
     ];
+
+    for (const p of potentialPaths) {
+        const testUrl = window.resolveUrl(p);
+        const content = await window.safeFetchText(testUrl);
+        if (content !== null) {
+            foundFiles.push({ path: p });
+        }
+    }
+}
+
+allMarkdownFiles = foundFiles;
+
+if (allMarkdownFiles.length === 0) {
+    listContainer.innerHTML = '<div style="padding: 24px; text-align: center; color: #ef4444; font-size: 0.9em;">No markdown pages found in the repository. Please verify your file paths or check your GitHub token.</div>';
+    badge.textContent = '0';
+    return;
 }
 
 badge.textContent = allMarkdownFiles.length;
